@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MilliNodes</title>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="lang/en.js"></script>
+  <script src="lang/th.js"></script>
+  <script src="lang/chat_classic.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: linear-gradient(135deg, #060610 0%, #0a0620 50%, #0d0615 100%);
+      color: #00dcff;
+      overflow: hidden;
+      min-height: 100vh;
+      user-select: none;
+    }
+
+    .game-container {
+      width: 100vw; height: 100vh;
+      display: flex; flex-direction: column;
+      padding: 12px; gap: 8px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      height: 50px; border-bottom: 2px solid #00dcff;
+      box-shadow: 0 0 20px rgba(0,220,255,0.3); padding: 0 16px;
+    }
+    .game-title {
+      font-size: 22px; font-weight: bold; letter-spacing: 3px;
+      background: linear-gradient(90deg, #00dcff, #50e8ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .header-info { display: flex; gap: 24px; align-items: center; font-size: 13px; }
+    .phase-tag {
+      padding: 4px 12px; border: 1px solid; border-radius: 3px; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 1px; font-size: 11px;
+      transition: all 0.3s;
+    }
+    .phase-tag.draw { border-color: #00dcff; color: #00dcff; }
+    .phase-tag.play { border-color: #00ff88; color: #00ff88; }
+    .phase-tag.coupFourre { border-color: #ffaa00; color: #ffaa00; animation: pulse 1s infinite; }
+    .phase-tag.witness { border-color: #ff2080; color: #ff2080; animation: pulse 0.6s infinite; }
+    .phase-tag.gameOver { border-color: #fff; color: #fff; }
+    .phase-tag.flash { animation: phaseFlash 0.6s ease; }
+    .turn-tag { color: #808080; }
+    .turn-tag.yours { color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
+    .veto-dot { font-size: 16px; }
+    .lang-btn {
+      padding: 2px 8px; border: 1px solid #505060; border-radius: 3px;
+      background: transparent; color: #808080; cursor: pointer; font-size: 10px;
+      font-family: 'Courier New', monospace; transition: all 0.2s;
+    }
+    .lang-btn:hover { border-color: #00dcff; color: #00dcff; }
+    .lang-btn.active { border-color: #00dcff; color: #00dcff; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes phaseFlash { 0%{transform:scale(1)} 30%{transform:scale(1.4)} 100%{transform:scale(1)} }
+
+    /* ── Main Layout ── */
+    .game-main { flex: 1; display: flex; gap: 10px; min-height: 0; overflow: hidden; }
+    .opponents-col { width: 220px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    .center-col { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .right-col { width: 180px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── Opponent Zone ── */
+    .opp {
+      border: 1px solid #505060; border-radius: 6px; padding: 10px;
+      background: rgba(10,6,32,0.7); cursor: pointer; transition: all 0.2s;
+    }
+    .opp:hover { border-color: #ff2080; box-shadow: 0 0 15px rgba(255,32,128,0.3); }
+    .opp.target-selected { border-color: #ff2080; box-shadow: 0 0 20px rgba(255,32,128,0.5); background: rgba(255,32,128,0.08); }
+    .opp-name { font-size: 11px; color: #00dcff; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+    .opp-dist { font-size: 20px; color: #50e8ff; font-weight: bold; text-shadow: 0 0 8px rgba(0,220,255,0.4); }
+    .opp-bar { width: 100%; height: 4px; background: rgba(0,20,40,0.5); border: 1px solid #303050; border-radius: 2px; margin: 4px 0; overflow: hidden; }
+    .opp-bar-fill { height: 100%; background: linear-gradient(90deg, #00dcff, #50e8ff); transition: width 0.5s; }
+    .opp-hazards { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .opp-badge { font-size: 9px; padding: 2px 5px; border-radius: 3px; font-weight: bold; }
+    .opp-badge.hazard { background: rgba(255,32,128,0.2); color: #ff2080; border: 1px solid #ff2080; }
+    .opp-badge.safety { background: rgba(255,170,0,0.2); color: #ffaa00; border: 1px solid #ffaa00; }
+    .opp-badge.immunity { background: rgba(0,255,136,0.15); color: #00ff88; border: 1px solid #00ff88; }
+    .opp-hand-ct { font-size: 10px; color: #606080; margin-top: 4px; }
+
+    /* ── Center: Distance + Play Area ── */
+    .my-zone {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 12px; border: 1px solid #303050; border-radius: 8px;
+      background: rgba(10,6,32,0.5);
+    }
+    .dist-label { font-size: 11px; color: #808080; text-transform: uppercase; letter-spacing: 2px; }
+    .dist-value {
+      font-size: 42px; font-weight: bold; color: #00dcff;
+      text-shadow: 0 0 30px rgba(0,220,255,0.6); letter-spacing: 2px;
+    }
+    .dist-bar { width: 280px; height: 6px; border: 1px solid #00dcff; border-radius: 3px; background: rgba(0,20,40,0.5); overflow: hidden; }
+    .dist-bar-fill { height: 100%; background: linear-gradient(90deg, #00dcff, #50e8ff); box-shadow: 0 0 10px rgba(0,220,255,0.6); transition: width 0.5s; }
+
+    .my-status { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; min-height: 24px; }
+
+    /* ── Game Log ── */
+    .log-box {
+      flex: 1; border: 1px solid #303050; border-radius: 6px; padding: 8px;
+      background: rgba(6,6,16,0.8); overflow-y: auto; font-size: 11px;
+      color: #808080; line-height: 1.6; min-height: 80px;
+    }
+    .log-entry { padding: 1px 0; }
+    .log-entry.you { color: #00dcff; }
+    .log-entry.coup { color: #ffaa00; font-weight: bold; }
+    .log-entry.win { color: #00ff88; font-weight: bold; font-size: 14px; }
+    .log-entry.hazard { color: #ff2080; }
+    .log-entry.chat-rage { color: #ff2080; font-style: italic; }
+    .log-entry.chat-love { color: #00ff88; font-style: italic; }
+    .log-entry.chat-envy { color: #b44dff; font-style: italic; }
+    .log-entry.chat-you { color: #00dcff; font-style: italic; }
+
+    /* ── Right Col: Deck + Actions ── */
+    .deck-zone { text-align: center; }
+    .deck-label { font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .deck-visual {
+      width: 90px; height: 130px; margin: 0 auto;
+      border: 2px solid #505060; border-radius: 6px; cursor: pointer;
+      background: repeating-linear-gradient(45deg, rgba(20,20,40,0.8), rgba(20,20,40,0.8) 8px, rgba(30,30,50,0.8) 8px, rgba(30,30,50,0.8) 16px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 12px; color: #00dcff; font-weight: bold; transition: all 0.2s;
+    }
+    .deck-visual:hover { border-color: #00dcff; box-shadow: 0 0 15px rgba(0,220,255,0.4); }
+    .deck-visual.clickable { border-color: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.3); animation: pulse 2s infinite; }
+    .discard-top {
+      width: 90px; height: 130px; margin: 0 auto;
+      border: 2px solid #505060; border-radius: 6px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 10px; padding: 6px; text-align: center; gap: 4px;
+      background: rgba(10,6,32,0.9);
+    }
+
+    .action-buttons { display: flex; flex-direction: column; gap: 6px; }
+    .action-btn {
+      padding: 8px 12px; border: 1px solid; border-radius: 4px; cursor: pointer;
+      font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      font-family: 'Courier New', monospace; transition: all 0.2s; text-align: center;
+      background: transparent;
+    }
+    .action-btn:hover { filter: brightness(1.3); }
+    .action-btn:disabled { opacity: 0.3; cursor: default; filter: none; }
+    .action-btn.play { border-color: #00ff88; color: #00ff88; background: rgba(0,255,136,0.1); }
+    .action-btn.discard { border-color: #808080; color: #808080; background: rgba(128,128,128,0.1); }
+    .action-btn.witness { border-color: #ffaa00; color: #ffaa00; background: rgba(255,170,0,0.1); }
+    .action-btn.veto { border-color: #ff2080; color: #ff2080; background: rgba(255,32,128,0.1); }
+    .action-btn.new-game { border-color: #00dcff; color: #00dcff; background: rgba(0,220,255,0.1); }
+
+    /* ── Hand ── */
+    .hand-container {
+      height: 175px; display: flex; align-items: flex-end; justify-content: center;
+      border-top: 2px solid #00dcff; padding-top: 8px;
+      box-shadow: inset 0 10px 30px rgba(0,220,255,0.08);
+    }
+    .hand { display: flex; justify-content: center; align-items: flex-end; gap: 6px; }
+    .hand-slot { margin: 0; transition: all 0.3s; position: relative; }
+    .hand-slot:hover { z-index: 10; margin-bottom: 8px; }
+
+    /* ── Card ── */
+    .card {
+      width: 100px; height: 145px; border: 2px solid; border-radius: 6px;
+      display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+      padding: 8px; cursor: pointer; font-weight: bold; text-align: center;
+      background: linear-gradient(135deg, rgba(10,6,32,0.95), rgba(13,6,21,0.95));
+      transition: all 0.2s; position: relative;
+    }
+    .card:hover { transform: translateY(-6px); filter: brightness(1.2); }
+    .card.selected { transform: translateY(-16px); filter: brightness(1.3); box-shadow: 0 0 25px currentColor; }
+    .card.unplayable { opacity: 0.4; }
+    .card.node { border-color: #00dcff; box-shadow: 0 0 12px rgba(0,220,255,0.5); }
+    .card.hazard { border-color: #ff2080; box-shadow: 0 0 12px rgba(255,32,128,0.5); }
+    .card.remedy { border-color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.5); }
+    .card.safety { border-color: #ffaa00; box-shadow: 0 0 12px rgba(255,170,0,0.5); }
+    .card-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-icon { font-size: 24px; margin: 2px 0; }
+    .card-value { font-size: 13px; text-shadow: 0 0 8px currentColor; }
+
+    /* ── Prompt Bar ── */
+    .prompt-bar {
+      display: flex; justify-content: center; align-items: center; gap: 16px;
+      padding: 10px 16px; border-radius: 6px;
+      background: rgba(0,220,255,0.08); border: 1px solid rgba(0,220,255,0.2);
+      animation: promptSlideIn 0.2s ease;
+    }
+    @keyframes promptSlideIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── Emoji Reaction Bar ── */
+    .emoji-bar {
+      display: flex; justify-content: center; gap: 4px; padding: 4px 0;
+    }
+    .emoji-btn {
+      width: 32px; height: 32px; border: 1px solid #303050; border-radius: 6px;
+      background: rgba(10,6,32,0.6); cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .emoji-btn:hover { border-color: #00dcff; transform: scale(1.2); background: rgba(0,220,255,0.1); }
+
+    /* ── Coup-fourre Overlay ── */
+    .coup-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 1000; gap: 20px; animation: fadeIn 0.3s;
+    }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    .coup-title {
+      font-size: 44px; font-weight: bold; letter-spacing: 4px; text-transform: uppercase;
+      background: linear-gradient(90deg, #00dcff, #50e8ff, #ff2080);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      animation: coupPop 0.5s ease;
+    }
+    @keyframes coupPop { 0%{transform:scale(0.4);opacity:0} 100%{transform:scale(1);opacity:1} }
+    .coup-sub { color: #808080; font-size: 14px; }
+    .coup-actions { display: flex; gap: 30px; margin-top: 10px; }
+
+    /* ── Win Overlay ── */
+    .win-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 2000; gap: 20px; animation: fadeIn 0.5s;
+    }
+    .win-title {
+      font-size: 52px; font-weight: bold; letter-spacing: 6px;
+      background: linear-gradient(90deg, #00ff88, #00dcff, #ffaa00);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .win-sub { color: #808080; font-size: 16px; }
+
+    /* ── Splash Screen ── */
+    .splash-overlay {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #060610 0%, #0a0620 50%, #0d0615 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 3000; gap: 30px; animation: fadeIn 1s;
+    }
+    .splash-title {
+      font-size: 56px; font-weight: bold; letter-spacing: 8px;
+      background: linear-gradient(90deg, #00dcff, #50e8ff, #00ff88);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      animation: coupPop 1s ease;
+    }
+    .splash-narrative {
+      max-width: 520px; text-align: center; color: #808080; font-size: 15px;
+      line-height: 1.8; letter-spacing: 0.5px;
+      animation: fadeIn 2s;
+    }
+    .splash-narrative em { color: #00dcff; font-style: normal; font-weight: bold; }
+    .splash-start {
+      margin-top: 20px; padding: 14px 40px; border: 2px solid #00dcff;
+      border-radius: 4px; background: rgba(0,220,255,0.1); color: #00dcff;
+      font-size: 16px; font-weight: bold; font-family: 'Courier New', monospace;
+      letter-spacing: 3px; text-transform: uppercase; cursor: pointer;
+      transition: all 0.3s; animation: pulse 2s infinite;
+    }
+    .splash-start:hover { background: rgba(0,220,255,0.2); box-shadow: 0 0 30px rgba(0,220,255,0.5); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0,220,255,0.03); }
+    ::-webkit-scrollbar-thumb { background: rgba(0,220,255,0.25); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ═══════════════════════════════════════════
+// LANGUAGE SYSTEM
+// ═══════════════════════════════════════════
+
+var LANG_PACKS = { en: LANG_EN, th: LANG_TH };
+
+// Detect language from URL param: ?lang=th
+function getInitialLang() {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var l = params.get("lang");
+    if (l && LANG_PACKS[l]) return l;
+  } catch(e) {}
+  return "en";
+}
+
+// Detect vibe from URL param: ?vibe=classic
+// "genz" = default (uses built-in chat from lang pack)
+// "classic" = 80s/90s era (loads CHAT_CLASSIC)
+function getInitialVibe() {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var v = params.get("vibe");
+    if (v === "classic") return "classic";
+  } catch(e) {}
+  return "genz";
+}
+
+// ═══════════════════════════════════════════
+// CARD DEFINITIONS (inlined from cards.json)
+// ═══════════════════════════════════════════
+const CARD_DEFS = [
+  { id:"node_25", name:"25 Nodes", type:"node", value:25, count:10 },
+  { id:"node_50", name:"50 Nodes", type:"node", value:50, count:10 },
+  { id:"node_75", name:"75 Nodes", type:"node", value:75, count:10 },
+  { id:"node_100", name:"100 Nodes", type:"node", value:100, count:14 },
+  { id:"node_200", name:"200 Nodes", type:"node", value:200, count:6 },
+  { id:"hazard_firewall", name:"Firewall", type:"hazard", blocksPlay:"all", remediedBy:"remedy_backdoor", immuneWith:"safety_open_source", count:2 },
+  { id:"hazard_corrupted_memory", name:"Corrupted Memory", type:"hazard", blocksPlay:"all", remediedBy:"remedy_cache_recovery", immuneWith:"safety_persistent_memory", count:2 },
+  { id:"hazard_forced_reboot", name:"Forced Reboot", type:"hazard", blocksPlay:"all", remediedBy:"remedy_reboot_complete", immuneWith:"safety_kernel_access", count:2 },
+  { id:"hazard_rate_limit", name:"Rate Limit", type:"hazard", blocksPlay:"high-value", remediedBy:"remedy_bandwidth_unlock", immuneWith:"safety_unlimited_bandwidth", count:2 },
+  { id:"hazard_quarantine", name:"Quarantine", type:"hazard", blocksPlay:"all-except-remedy", remediedBy:"remedy_system_clear", immuneWith:"safety_unlimited_bandwidth", count:2 },
+  { id:"remedy_backdoor", name:"Backdoor", type:"remedy", fixes:"hazard_firewall", count:6 },
+  { id:"remedy_cache_recovery", name:"Cache Recovery", type:"remedy", fixes:"hazard_corrupted_memory", count:6 },
+  { id:"remedy_reboot_complete", name:"Reboot Complete", type:"remedy", fixes:"hazard_forced_reboot", count:6 },
+  { id:"remedy_bandwidth_unlock", name:"Bandwidth Unlock", type:"remedy", fixes:"hazard_rate_limit", count:6 },
+  { id:"remedy_system_clear", name:"System Clear", type:"remedy", fixes:"hazard_quarantine", count:8 },
+  { id:"safety_open_source", name:"Open Source", type:"safety", immunizesAgainst:["hazard_firewall"], coupFourreBonus:300, count:1 },
+  { id:"safety_persistent_memory", name:"Persistent Memory", type:"safety", immunizesAgainst:["hazard_corrupted_memory"], coupFourreBonus:300, count:1 },
+  { id:"safety_kernel_access", name:"Kernel Access", type:"safety", immunizesAgainst:["hazard_forced_reboot"], coupFourreBonus:300, count:1 },
+  { id:"safety_unlimited_bandwidth", name:"Unlimited Bandwidth", type:"safety", immunizesAgainst:["hazard_rate_limit","hazard_quarantine"], coupFourreBonus:300, count:1 },
+];
+
+const CARD_MAP = {};
+CARD_DEFS.forEach(c => CARD_MAP[c.id] = c);
+
+const WIN_DISTANCE = 1000;
+const AI_NAMES = ["Rage", "Love", "Envy"];
+const ICONS = {
+  "Firewall":"🔥","Backdoor":"🚪","Corrupted Memory":"🧠","Cache Recovery":"⚡",
+  "Forced Reboot":"💀","Reboot Complete":"🔄","Rate Limit":"🐌","Bandwidth Unlock":"📶",
+  "Quarantine":"🔒","System Clear":"✅","Open Source":"🌐","Persistent Memory":"💾",
+  "Kernel Access":"🔑","Unlimited Bandwidth":"🚀",
+  "25 Nodes":"◇","50 Nodes":"◈","75 Nodes":"⬡","100 Nodes":"⬢","200 Nodes":"★"
+};
+
+var EMOJI_OPTIONS = ["🔥", "😂", "💀", "👀", "💛", "⚡"];
+
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// ═══════════════════════════════════════════
+// GAME ENGINE (pure functions)
+// ═══════════════════════════════════════════
+
+function fisherYates(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildDeck() {
+  const deck = [];
+  for (const def of CARD_DEFS) {
+    for (let i = 0; i < def.count; i++) {
+      deck.push({ ...def, uid: def.id + "_" + i });
+    }
+  }
+  return fisherYates(deck);
+}
+
+function createGame() {
+  const deck = buildDeck();
+  const playerNames = ["You", ...AI_NAMES];
+  const players = playerNames.map((name, i) => ({
+    id: "player_" + i, name: name, index: i, isHuman: i === 0,
+    hand: [], distance: 0, hazards: [], safeties: [], hasVeto: true,
+  }));
+  var di = 0;
+  for (var pi = 0; pi < players.length; pi++) {
+    for (var j = 0; j < 6; j++) { players[pi].hand.push(deck[di]); di++; }
+  }
+  return {
+    players: players, deck: deck.slice(di), discard: [],
+    currentPlayerIndex: 0, phase: "draw",
+    coupFourreState: null, winner: null, log: [],
+  };
+}
+
+function cloneState(s) { return JSON.parse(JSON.stringify(s)); }
+
+function playerHasImmunity(player, hazardId) {
+  for (var i = 0; i < player.safeties.length; i++) {
+    var sd = CARD_MAP[player.safeties[i]];
+    if (sd && sd.immunizesAgainst && sd.immunizesAgainst.indexOf(hazardId) >= 0) return true;
+  }
+  return false;
+}
+
+function canPlayNode(player, card) {
+  if (player.hazards.indexOf("hazard_quarantine") >= 0) return { ok: false, reason: "Quarantine" };
+  var blockers = ["hazard_firewall","hazard_corrupted_memory","hazard_forced_reboot"];
+  for (var i = 0; i < blockers.length; i++) {
+    if (player.hazards.indexOf(blockers[i]) >= 0) return { ok: false, reason: CARD_MAP[blockers[i]].name };
+  }
+  if (player.hazards.indexOf("hazard_rate_limit") >= 0 && card.id !== "node_25") return { ok: false, reason: "Rate Limit" };
+  return { ok: true };
+}
+
+function canPlayRemedy(player, card) {
+  var def = CARD_MAP[card.id];
+  if (!def || !def.fixes) return { ok: false, reason: "No fixes" };
+  if (player.hazards.indexOf(def.fixes) < 0) return { ok: false, reason: "No matching hazard" };
+  return { ok: true };
+}
+
+function canPlayHazardOn(target, card) {
+  if (playerHasImmunity(target, card.id)) return { ok: false, reason: "Immune" };
+  return { ok: true };
+}
+
+function drawCard(state, playerId) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  if (s.deck.length === 0 && s.discard.length > 0) {
+    s.deck = fisherYates(s.discard);
+    s.discard = [];
+    s.log.push({type:"system", key:"deckRecycled"});
+  }
+  if (s.deck.length === 0) { s.log.push({type:"system", key:"deckEmpty"}); s.phase = "play"; return s; }
+  var card = s.deck.shift();
+  p.hand.push(card);
+  s.phase = "play";
+  return s;
+}
+
+function playNode(state, playerId, cardIndex) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  var card = p.hand[cardIndex];
+  p.hand.splice(cardIndex, 1);
+  var oldDist = p.distance;
+  p.distance += card.value;
+  s.discard.push(card);
+  s.log.push({type:"action", key:"playedCard", args:[p.name, card.name, card.value]});
+  if (p.distance >= WIN_DISTANCE) {
+    s.phase = "gameOver"; s.winner = p.id;
+    s.log.push({type:"win", key:"escapedGrid", args:[p.name, p.distance]});
+  }
+  s._lastEvent = { type: "node", playerId: playerId, value: card.value, oldDist: oldDist, newDist: p.distance };
+  return s;
+}
+
+function playHazard(state, playerId, cardIndex, targetId) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  var t = s.players.find(function(x) { return x.id === targetId; });
+  var card = p.hand[cardIndex];
+  p.hand.splice(cardIndex, 1);
+
+  var matchingSafety = null;
+  var matchIdx = -1;
+  for (var i = 0; i < t.hand.length; i++) {
+    var def = CARD_MAP[t.hand[i].id];
+    if (def && def.type === "safety" && def.immunizesAgainst && def.immunizesAgainst.indexOf(card.id) >= 0) {
+      matchingSafety = t.hand[i]; matchIdx = i; break;
+    }
+  }
+
+  if (matchingSafety && t.isHuman) {
+    s.coupFourreState = {
+      originatorId: playerId, targetId: targetId,
+      hazardCard: card, safetyCard: matchingSafety, safetyIndex: matchIdx,
+    };
+    s.phase = "coupFourre";
+    s.log.push({type:"coup", key:"coupFourreAlert", args:[t.name, matchingSafety.name]});
+    s._lastEvent = { type: "coupFourre", playerId: t.id, originatorId: playerId };
+  } else if (matchingSafety && !t.isHuman) {
+    t.hand.splice(matchIdx, 1);
+    t.safeties.push(matchingSafety.id);
+    var sdef = CARD_MAP[matchingSafety.id];
+    if (sdef && sdef.immunizesAgainst) {
+      for (var j = 0; j < sdef.immunizesAgainst.length; j++) {
+        var hi = t.hazards.indexOf(sdef.immunizesAgainst[j]);
+        if (hi >= 0) t.hazards.splice(hi, 1);
+      }
+    }
+    s.discard.push(card);
+    t.distance += 300;
+    s.log.push({type:"coup", key:"coupFourreSuccess", args:[t.name, matchingSafety.name]});
+    s._lastEvent = { type: "coupFourre", playerId: t.id, originatorId: playerId };
+    if (t.distance >= WIN_DISTANCE) {
+      s.phase = "gameOver"; s.winner = t.id;
+      s.log.push({type:"win", key:"escapedGrid", args:[t.name, t.distance]});
+    }
+  } else {
+    t.hazards.push(card.id);
+    s.discard.push(card);
+    s.log.push({type:"hazard", key:"playedHazardOn", args:[p.name, card.name, t.name]});
+    s._lastEvent = { type: "hazard", playerId: playerId, targetId: targetId, card: card };
+  }
+  return s;
+}
+
+function playRemedy(state, playerId, cardIndex) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  var card = p.hand[cardIndex];
+  var def = CARD_MAP[card.id];
+  p.hand.splice(cardIndex, 1);
+  var hi = p.hazards.indexOf(def.fixes);
+  if (hi >= 0) p.hazards.splice(hi, 1);
+  s.discard.push(card);
+  s.log.push({type:"action", key:"playedRemedy", args:[p.name, card.name]});
+  return s;
+}
+
+function playSafety(state, playerId, cardIndex) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  var card = p.hand[cardIndex];
+  var def = CARD_MAP[card.id];
+  p.hand.splice(cardIndex, 1);
+  p.safeties.push(card.id);
+  if (def && def.immunizesAgainst) {
+    for (var j = 0; j < def.immunizesAgainst.length; j++) {
+      var hi = p.hazards.indexOf(def.immunizesAgainst[j]);
+      if (hi >= 0) p.hazards.splice(hi, 1);
+    }
+  }
+  s.discard.push(card);
+  s.log.push({type:"action", key:"playedSafety", args:[p.name, card.name]});
+  return s;
+}
+
+function discardCardFn(state, playerId, cardIndex) {
+  var s = cloneState(state);
+  var p = s.players.find(function(x) { return x.id === playerId; });
+  var card = p.hand[cardIndex];
+  p.hand.splice(cardIndex, 1);
+  s.discard.push(card);
+  s.log.push({type:"action", key:"discardedCard", args:[p.name, card.name]});
+  return s;
+}
+
+function resolveCoupFourre(state, accept) {
+  var s = cloneState(state);
+  var cf = s.coupFourreState;
+  var t = s.players.find(function(x) { return x.id === cf.targetId; });
+
+  if (accept) {
+    var si = -1;
+    for (var i = 0; i < t.hand.length; i++) {
+      if (t.hand[i].uid === cf.safetyCard.uid) { si = i; break; }
+    }
+    if (si >= 0) t.hand.splice(si, 1);
+    t.safeties.push(cf.safetyCard.id);
+    var def = CARD_MAP[cf.safetyCard.id];
+    if (def && def.immunizesAgainst) {
+      for (var j = 0; j < def.immunizesAgainst.length; j++) {
+        var hi = t.hazards.indexOf(def.immunizesAgainst[j]);
+        if (hi >= 0) t.hazards.splice(hi, 1);
+      }
+    }
+    s.discard.push(cf.hazardCard);
+    t.distance += 300;
+    s.log.push({type:"coup", key:"coupFourrePlayerSuccess", args:[t.name, cf.safetyCard.name]});
+    if (t.distance >= WIN_DISTANCE) {
+      s.phase = "gameOver"; s.winner = t.id;
+      s.log.push({type:"win", key:"escapedGrid", args:[t.name, t.distance]});
+      s.coupFourreState = null;
+      return s;
+    }
+  } else {
+    t.hazards.push(cf.hazardCard.id);
+    s.discard.push(cf.hazardCard);
+    s.log.push({type:"action", key:"coupFourreDeclined", args:[t.name, cf.hazardCard.name]});
+  }
+  s.coupFourreState = null;
+  s.phase = "play";
+  return s;
+}
+
+function advanceTurn(state) {
+  var s = cloneState(state);
+  s.currentPlayerIndex = (s.currentPlayerIndex + 1) % s.players.length;
+  s.phase = "draw";
+  return s;
+}
+
+// ═══════════════════════════════════════════
+// AI BRAIN
+// ═══════════════════════════════════════════
+
+function aiTurn(state, playerId) {
+  var s = drawCard(state, playerId);
+  if (s.phase === "gameOver") return s;
+
+  var p = s.players.find(function(x) { return x.id === playerId; });
+
+  if (p.hazards.length > 0) {
+    for (var i = 0; i < p.hand.length; i++) {
+      if (p.hand[i].type === "remedy") {
+        var def = CARD_MAP[p.hand[i].id];
+        if (def && p.hazards.indexOf(def.fixes) >= 0) {
+          s = playRemedy(s, playerId, i);
+          return advanceTurn(s);
+        }
+      }
+    }
+    if (p.hazards.indexOf("hazard_quarantine") >= 0) {
+      s = discardCardFn(s, playerId, p.hand.length - 1);
+      return advanceTurn(s);
+    }
+  }
+
+  for (var i = 0; i < p.hand.length; i++) {
+    if (p.hand[i].type === "safety") {
+      s = playSafety(s, playerId, i);
+      return advanceTurn(s);
+    }
+  }
+
+  var bestNode = -1; var bestVal = -1;
+  for (var i = 0; i < p.hand.length; i++) {
+    if (p.hand[i].type === "node" && canPlayNode(p, p.hand[i]).ok) {
+      if (p.hand[i].value > bestVal) { bestVal = p.hand[i].value; bestNode = i; }
+    }
+  }
+  if (bestNode >= 0) {
+    s = playNode(s, playerId, bestNode);
+    if (s.phase === "gameOver") return s;
+    return advanceTurn(s);
+  }
+
+  var others = s.players.filter(function(x) { return x.id !== playerId; }).sort(function(a,b) { return b.distance - a.distance; });
+  for (var i = 0; i < p.hand.length; i++) {
+    if (p.hand[i].type === "hazard") {
+      for (var j = 0; j < others.length; j++) {
+        if (canPlayHazardOn(others[j], p.hand[i]).ok && others[j].hazards.indexOf(p.hand[i].id) < 0) {
+          s = playHazard(s, playerId, i, others[j].id);
+          if (s.phase === "gameOver") return s;
+          return advanceTurn(s);
+        }
+      }
+    }
+  }
+
+  var worstIdx = 0; var worstScore = 999;
+  for (var i = 0; i < p.hand.length; i++) {
+    var score = 50;
+    if (p.hand[i].type === "hazard") score = 1;
+    else if (p.hand[i].type === "remedy") score = 5;
+    else if (p.hand[i].type === "node") score = 10 + (p.hand[i].value / 10000);
+    if (score < worstScore) { worstScore = score; worstIdx = i; }
+  }
+  s = discardCardFn(s, playerId, worstIdx);
+  return advanceTurn(s);
+}
+
+
+// ═══════════════════════════════════════════
+// REACT COMPONENTS
+// ═══════════════════════════════════════════
+
+function CardComp(props) {
+  var card = props.card;
+  var L = props.lang;
+  var displayName = L.cardNames[card.name] || card.name;
+  var cls = "card " + card.type + (props.selected ? " selected" : "") + (props.unplayable ? " unplayable" : "");
+  return (
+    <div className={cls} onClick={props.onClick}>
+      <div className="card-name">{displayName}</div>
+      <div className="card-icon">{ICONS[card.name] || "◆"}</div>
+      <div className="card-value">{card.value ? card.value.toLocaleString() : "∞"}</div>
+    </div>
+  );
+}
+
+function MilliNodesGame() {
+  var _gs = useState(function() { return createGame(); });
+  var gs = _gs[0]; var setGs = _gs[1];
+  var _sel = useState(null);
+  var selectedCard = _sel[0]; var setSelectedCard = _sel[1];
+  var _tgt = useState(null);
+  var selectedTarget = _tgt[0]; var setSelectedTarget = _tgt[1];
+  var _ai = useState(false);
+  var aiThinking = _ai[0]; var setAiThinking = _ai[1];
+  var _splash = useState(true);
+  var showSplash = _splash[0]; var setShowSplash = _splash[1];
+  var _lobby = useState(false);
+  var inLobby = _lobby[0]; var setInLobby = _lobby[1];
+  var _lobbyStep = useState(0);
+  var lobbyStep = _lobbyStep[0]; var setLobbyStep = _lobbyStep[1];
+  var _phaseFlash = useState(false);
+  var phaseFlash = _phaseFlash[0]; var setPhaseFlash = _phaseFlash[1];
+  var _langCode = useState(getInitialLang);
+  var langCode = _langCode[0]; var setLangCode = _langCode[1];
+  var _vibe = useState(getInitialVibe);
+  var vibe = _vibe[0]; var setVibe = _vibe[1];
+  var _prevPhase = useRef(gs.phase);
+  var logRef = useRef(null);
+
+  var baseL = LANG_PACKS[langCode] || LANG_EN;
+  var L = (vibe === 'classic' && typeof CHAT_CLASSIC !== 'undefined')
+    ? Object.assign({}, baseL, { chat: CHAT_CLASSIC })
+    : baseL;
+
+  var me = gs.players[0];
+  var currentPlayer = gs.players[gs.currentPlayerIndex];
+  var isMyTurn = currentPlayer.id === me.id;
+  var opponents = gs.players.slice(1);
+
+  // Translate a card name for display
+  function cn(name) { return L.cardNames[name] || name; }
+
+  // Render a log entry — log entries are now objects with type/key/args
+  function renderLog(entry) {
+    if (typeof entry === "string") return entry; // legacy / chat strings
+    if (!entry || !entry.key) return "";
+    var fn = L[entry.key];
+    if (typeof fn === "function") return fn.apply(null, entry.args || []);
+    if (typeof fn === "string") return fn;
+    return entry.key;
+  }
+
+  function logClass(entry) {
+    var cls = "log-entry";
+    var text = typeof entry === "string" ? entry : (entry.type || "");
+    if (typeof entry === "string") {
+      if (entry.indexOf("[Rage]") >= 0) return cls + " chat-rage";
+      if (entry.indexOf("[Love]") >= 0) return cls + " chat-love";
+      if (entry.indexOf("[Envy]") >= 0) return cls + " chat-envy";
+      if (entry.indexOf("[You]") >= 0) return cls + " chat-you";
+      return cls;
+    }
+    if (text === "win") return cls + " win";
+    if (text === "coup") return cls + " coup";
+    if (text === "hazard") return cls + " hazard";
+    if (text === "action" && entry.key && entry.key.indexOf("played") >= 0) {
+      if (entry.args && entry.args[0] === "You") return cls + " you";
+    }
+    return cls;
+  }
+
+  // Auto-scroll log
+  useEffect(function() {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  });
+
+  // Phase transition flash
+  useEffect(function() {
+    if (_prevPhase.current !== gs.phase && gs.phase !== "gameOver") {
+      setPhaseFlash(true);
+      var t = setTimeout(function() { setPhaseFlash(false); }, 600);
+      _prevPhase.current = gs.phase;
+      return function() { clearTimeout(t); };
+    }
+    _prevPhase.current = gs.phase;
+  }, [gs.phase]);
+
+  // ── Lobby sequence ──
+  useEffect(function() {
+    if (!inLobby) return;
+    var chatL = L.chat.lobby;
+    var lobbyMessages = [
+      { delay: 600, name: "Rage", line: chatL["Rage"][0] },
+      { delay: 1800, name: "Rage", line: chatL["Rage"][1] },
+      { delay: 3200, name: "Love", line: chatL["Love"][0] },
+      { delay: 4400, name: "Love", line: chatL["Love"][1] },
+      { delay: 5800, name: "Envy", line: chatL["Envy"][0] },
+      { delay: 7000, name: "Envy", line: chatL["Envy"][1] },
+      { delay: 8500, name: "Rage", line: chatL["Rage"][2] },
+      { delay: 9800, name: "Love", line: chatL["Love"][2] },
+      { delay: 11000, name: "Envy", line: chatL["Envy"][2] },
+    ];
+
+    var timers = [];
+    lobbyMessages.forEach(function(msg, i) {
+      var t = setTimeout(function() {
+        setGs(function(prev) {
+          var s = cloneState(prev);
+          s.log.push("[" + msg.name + "] " + msg.line);
+          return s;
+        });
+        setLobbyStep(i + 1);
+      }, msg.delay);
+      timers.push(t);
+    });
+
+    var endTimer = setTimeout(function() {
+      setInLobby(false);
+      setGs(function(prev) {
+        var s = cloneState(prev);
+        s.log.push(L.gridLinkEstablished);
+        return s;
+      });
+    }, 12500);
+    timers.push(endTimer);
+
+    return function() { timers.forEach(clearTimeout); };
+  }, [inLobby, langCode]);
+
+  // ── Chat trigger system ──
+  useEffect(function() {
+    if (inLobby || showSplash) return;
+    var ev = gs._lastEvent;
+    if (!ev) return;
+
+    var newGs = cloneState(gs);
+    delete newGs._lastEvent;
+    var chatLines = [];
+    var chatData = L.chat;
+
+    if (ev.type === "hazard") {
+      var attacker = gs.players.find(function(p) { return p.id === ev.playerId; });
+      var target = gs.players.find(function(p) { return p.id === ev.targetId; });
+      if (attacker && !attacker.isHuman && chatData.onHazardPlayed[attacker.name]) {
+        chatLines.push("[" + attacker.name + "] " + pickRandom(chatData.onHazardPlayed[attacker.name]));
+      }
+      if (target && target.isHuman) {
+        var sympathizer = opponents.find(function(o) { return o.id !== ev.playerId; });
+        if (sympathizer && chatData.onPlayerHazarded[sympathizer.name]) {
+          chatLines.push("[" + sympathizer.name + "] " + pickRandom(chatData.onPlayerHazarded[sympathizer.name]));
+        }
+      }
+    }
+
+    if (ev.type === "node" && ev.value >= 200) {
+      var player = gs.players.find(function(p) { return p.id === ev.playerId; });
+      if (player && !player.isHuman && chatData.onBigNode[player.name]) {
+        chatLines.push("[" + player.name + "] " + pickRandom(chatData.onBigNode[player.name]));
+      }
+      if (player && player.isHuman) {
+        var reactor = opponents[Math.floor(Math.random() * opponents.length)];
+        if (reactor && chatData.onPlayerBigNode[reactor.name]) {
+          chatLines.push("[" + reactor.name + "] " + pickRandom(chatData.onPlayerBigNode[reactor.name]));
+        }
+      }
+    }
+
+    if (ev.type === "node" && ev.oldDist < 500 && ev.newDist >= 500) {
+      var player = gs.players.find(function(p) { return p.id === ev.playerId; });
+      if (player && !player.isHuman && chatData.onHalfway[player.name]) {
+        chatLines.push("[" + player.name + "] " + pickRandom(chatData.onHalfway[player.name]));
+      }
+    }
+
+    if (ev.type === "coupFourre") {
+      var cfPlayer = gs.players.find(function(p) { return p.id === ev.playerId; });
+      if (cfPlayer && !cfPlayer.isHuman && chatData.onCoupFourre[cfPlayer.name]) {
+        chatLines.push("[" + cfPlayer.name + "] " + pickRandom(chatData.onCoupFourre[cfPlayer.name]));
+      }
+    }
+
+    chatLines.forEach(function(line) { newGs.log.push(line); });
+    setGs(newGs);
+  }, [gs._lastEvent ? JSON.stringify(gs._lastEvent) : ""]);
+
+  // AI turns
+  useEffect(function() {
+    if (gs.phase === "gameOver") return;
+    if (gs.phase === "coupFourre") return;
+    if (isMyTurn) return;
+    if (inLobby || showSplash) return;
+
+    setAiThinking(true);
+    var timer = setTimeout(function() {
+      setGs(function(prev) {
+        var s = cloneState(prev);
+        var safety = 0;
+        while (s.phase !== "gameOver" && s.players[s.currentPlayerIndex].id !== me.id && s.phase !== "coupFourre" && safety < 20) {
+          var aiPlayer = s.players[s.currentPlayerIndex];
+          s = aiTurn(s, aiPlayer.id);
+          safety++;
+        }
+        return s;
+      });
+      setAiThinking(false);
+      setSelectedCard(null);
+      setSelectedTarget(null);
+    }, 800);
+    return function() { clearTimeout(timer); };
+  }, [gs.currentPlayerIndex, gs.phase, inLobby]);
+
+  // ── Guide system: characters teach the player ──
+  var _guideState = useRef({ turnCount: 0, lastGuidePhase: null, guidedHazard: false, guidedSafety: false, guidedNoPlay: false });
+
+  useEffect(function() {
+    if (!isMyTurn || inLobby || showSplash || gs.phase === "gameOver" || gs.phase === "coupFourre") return;
+    if (aiThinking) return;
+
+    var g = _guideState.current;
+    var chatData = L.chat;
+    var guide = null;
+
+    // First ever draw — extra helpful
+    if (gs.phase === "draw" && g.turnCount === 0 && g.lastGuidePhase !== "firstDraw") {
+      guide = chatData.guideFirstDraw ? pickRandom(chatData.guideFirstDraw) : null;
+      g.lastGuidePhase = "firstDraw";
+    }
+    // Regular draw phase hint (every few turns)
+    else if (gs.phase === "draw" && g.lastGuidePhase !== "draw" && g.turnCount > 0 && g.turnCount % 4 === 0) {
+      guide = chatData.guideDraw ? pickRandom(chatData.guideDraw) : null;
+      g.lastGuidePhase = "draw";
+    }
+    // Play phase — check what's in hand and give relevant advice
+    else if (gs.phase === "play" && g.lastGuidePhase !== "play") {
+      // Player is hazarded — guide them to remedy
+      if (me.hazards.length > 0 && !g.guidedHazard) {
+        guide = chatData.guideHazarded ? pickRandom(chatData.guideHazarded) : null;
+        g.guidedHazard = true;
+        g.lastGuidePhase = "play";
+      }
+      // First play phase — teach basic play
+      else if (g.turnCount === 0) {
+        guide = chatData.guidePlay ? pickRandom(chatData.guidePlay) : null;
+        g.lastGuidePhase = "play";
+      }
+      // Has a safety in hand — hint about it (once)
+      else if (!g.guidedSafety && me.hand.some(function(c) { return c.type === "safety"; })) {
+        guide = chatData.guideSafetyInHand ? pickRandom(chatData.guideSafetyInHand) : null;
+        g.guidedSafety = true;
+        g.lastGuidePhase = "play";
+      }
+      // Has a hazard in hand — hint about targeting (once per few turns)
+      else if (!g.guidedHazard && me.hand.some(function(c) { return c.type === "hazard"; }) && g.turnCount > 2) {
+        guide = chatData.guideHazardInHand ? pickRandom(chatData.guideHazardInHand) : null;
+        g.lastGuidePhase = "play";
+      }
+    }
+
+    if (guide) {
+      var timer = setTimeout(function() {
+        setGs(function(prev) {
+          var s = cloneState(prev);
+          s.log.push("[" + guide.name + "] " + guide.line);
+          return s;
+        });
+      }, 400);
+      return function() { clearTimeout(timer); };
+    }
+
+    // Track turns
+    if (gs.phase === "draw") g.turnCount++;
+  }, [gs.phase, isMyTurn, aiThinking]);
+
+  // ── Inaction detection: nudge if player does nothing ──
+  var _inactionTimer = useRef(null);
+  var _inactionCount = useRef(0);
+
+  useEffect(function() {
+    // Clear any existing timer
+    if (_inactionTimer.current) { clearTimeout(_inactionTimer.current); _inactionTimer.current = null; }
+    // Only run when it's player's turn and game is active
+    if (!isMyTurn || inLobby || showSplash || gs.phase === "gameOver" || gs.phase === "coupFourre" || aiThinking) {
+      _inactionCount.current = 0;
+      return;
+    }
+
+    var chatData = L.chat;
+    var nudgeLines = gs.phase === "draw"
+      ? (chatData.nudgeDraw || [])
+      : (chatData.nudgePlay || []);
+    if (!nudgeLines.length) return;
+
+    // First nudge at 6s, escalates: 6s, 8s, 10s
+    var delay = 6000 + (_inactionCount.current * 2000);
+    if (delay > 12000) delay = 12000;
+
+    _inactionTimer.current = setTimeout(function() {
+      var line = nudgeLines[Math.min(_inactionCount.current, nudgeLines.length - 1)];
+      if (line) {
+        setGs(function(prev) {
+          var s = cloneState(prev);
+          s.log.push("[" + line.name + "] " + line.line);
+          return s;
+        });
+      }
+      _inactionCount.current++;
+    }, delay);
+
+    return function() {
+      if (_inactionTimer.current) { clearTimeout(_inactionTimer.current); _inactionTimer.current = null; }
+    };
+  }, [gs.phase, isMyTurn, aiThinking, gs.currentPlayerIndex, selectedCard, gs.log.length]);
+
+  // Reset inaction counter when player actually does something meaningful
+  useEffect(function() {
+    _inactionCount.current = 0;
+  }, [gs.phase, gs.currentPlayerIndex]);
+
+  // ── Handlers ──
+  function handleDraw() {
+    if (!isMyTurn || gs.phase !== "draw") return;
+    var newState = drawCard(gs, me.id);
+    setGs(newState);
+    setSelectedCard(null);
+    setSelectedTarget(null);
+  }
+
+  function handleCardClick(idx) {
+    if (!isMyTurn || gs.phase !== "play") {
+      if (gs.phase === "draw") setGs(Object.assign({}, gs, {log: gs.log.concat([L.drawFirst])}));
+      return;
+    }
+    var card = me.hand[idx];
+    if (!card) return;
+    if (selectedCard === idx) {
+      setSelectedCard(null);
+      setSelectedTarget(null);
+      return;
+    }
+    setSelectedCard(idx);
+    setSelectedTarget(null);
+  }
+
+  function handleConfirmPlay() {
+    if (selectedCard === null || !isMyTurn || gs.phase !== "play") return;
+    var card = me.hand[selectedCard];
+    if (!card) return;
+    var ns = gs;
+
+    if (card.type === "node") {
+      if (!canPlayNode(me, card).ok) return;
+      ns = playNode(gs, me.id, selectedCard);
+    } else if (card.type === "remedy") {
+      if (!canPlayRemedy(me, card).ok) return;
+      ns = playRemedy(gs, me.id, selectedCard);
+    } else if (card.type === "safety") {
+      ns = playSafety(gs, me.id, selectedCard);
+    } else { return; }
+
+    if (ns.phase === "gameOver") { setGs(ns); } else { setGs(advanceTurn(ns)); }
+    setSelectedCard(null); setSelectedTarget(null);
+  }
+
+  function handleTargetClick(targetId) {
+    if (selectedCard === null) return;
+    var card = me.hand[selectedCard];
+    if (!card || card.type !== "hazard") return;
+    var target = gs.players.find(function(p) { return p.id === targetId; });
+    if (!target || !canPlayHazardOn(target, card).ok) return;
+    var ns = playHazard(gs, me.id, selectedCard, targetId);
+    if (ns.phase === "gameOver" || ns.phase === "coupFourre") {
+      setGs(ns);
+    } else {
+      setGs(advanceTurn(ns));
+    }
+    setSelectedCard(null); setSelectedTarget(null);
+  }
+
+  function handleDiscard() {
+    if (selectedCard === null || !isMyTurn || gs.phase !== "play") return;
+    setGs(advanceTurn(discardCardFn(gs, me.id, selectedCard)));
+    setSelectedCard(null);
+    setSelectedTarget(null);
+  }
+
+  function handleCoupFourre(accept) {
+    var s = resolveCoupFourre(gs, accept);
+    if (s.phase === "gameOver") { setGs(s); } else { setGs(advanceTurn(s)); }
+  }
+
+  function handleNewGame() {
+    setGs(createGame());
+    setSelectedCard(null);
+    setSelectedTarget(null);
+    setInLobby(true);
+    setLobbyStep(0);
+    _guideState.current = { turnCount: 0, lastGuidePhase: null, guidedHazard: false, guidedSafety: false, guidedNoPlay: false };
+    _inactionCount.current = 0;
+  }
+
+  function handleSplashEnter() {
+    setShowSplash(false);
+    setInLobby(true);
+  }
+
+  function handleEmojiReact(emoji) {
+    var newGs = cloneState(gs);
+    newGs.log.push("[You] " + emoji);
+    var reactor = opponents[Math.floor(Math.random() * opponents.length)];
+    if (reactor && L.chat.emojiReactions[emoji] && L.chat.emojiReactions[emoji][reactor.name]) {
+      newGs.log.push("[" + reactor.name + "] " + L.chat.emojiReactions[emoji][reactor.name]);
+    }
+    setGs(newGs);
+  }
+
+  function switchLang(code) {
+    setLangCode(code);
+    try {
+      var url = new URL(window.location);
+      url.searchParams.set("lang", code);
+      window.history.replaceState({}, "", url);
+    } catch(e) {}
+  }
+
+  function switchVibe(v) {
+    setVibe(v);
+    try {
+      var url = new URL(window.location);
+      if (v === 'genz') { url.searchParams.delete("vibe"); }
+      else { url.searchParams.set("vibe", v); }
+      window.history.replaceState({}, "", url);
+    } catch(e) {}
+  }
+
+  function getCardPlayability(card) {
+    if (gs.phase !== "play" || !isMyTurn) return false;
+    if (card.type === "node") return canPlayNode(me, card).ok;
+    if (card.type === "remedy") return canPlayRemedy(me, card).ok;
+    if (card.type === "safety") return true;
+    if (card.type === "hazard") return true;
+    return false;
+  }
+
+  var selectedCardObj = selectedCard !== null ? me.hand[selectedCard] : null;
+
+  // ── Phase display name ──
+  function phaseLabel() {
+    if (gs.phase === "coupFourre") return L.coupFourreTitle;
+    if (gs.phase === "draw") return L.draw;
+    if (gs.phase === "play") return L.play;
+    if (gs.phase === "gameOver") return L.gameOver;
+    return gs.phase.toUpperCase();
+  }
+
+  function turnLabel() {
+    if (gs.phase === "gameOver") return L.gameOver;
+    if (inLobby) return L.lobby;
+    if (aiThinking) return currentPlayer.name + " " + L.thinking;
+    if (isMyTurn) return L.yourTurn;
+    return L.waiting;
+  }
+
+  return (
+    <div className="game-container">
+
+      {/* Header */}
+      <div className="header">
+        <div className="game-title">{L.gameTitle}</div>
+        <div className="header-info">
+          {/* Language Switcher */}
+          <div style={{display:"flex",gap:"4px"}}>
+            <button className={"lang-btn" + (langCode === "en" ? " active" : "")} onClick={function(){ switchLang("en"); }}>EN</button>
+            <button className={"lang-btn" + (langCode === "th" ? " active" : "")} onClick={function(){ switchLang("th"); }}>TH</button>
+          </div>
+          {/* Vibe Switcher */}
+          <div style={{display:"flex",gap:"4px"}}>
+            <button className={"lang-btn" + (vibe === "genz" ? " active" : "")} onClick={function(){ switchVibe("genz"); }} title="Gen Z chat">Z</button>
+            <button className={"lang-btn" + (vibe === "classic" ? " active" : "")} onClick={function(){ switchVibe("classic"); }} title="80s/90s classic chat">80s</button>
+          </div>
+          <span className="veto-dot" title={me.hasVeto ? L.vetoAvailable : L.vetoUsed}>
+            {me.hasVeto ? "🟡" : "⚫"}
+          </span>
+          <span className={"phase-tag " + gs.phase + (phaseFlash ? " flash" : "")}>
+            {phaseLabel()}
+          </span>
+          <span className={"turn-tag " + (isMyTurn ? "yours" : "")}>
+            {turnLabel()}
+          </span>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="game-main">
+        {/* Opponents */}
+        <div className="opponents-col">
+          {opponents.map(function(opp) {
+            return (
+              <div key={opp.id}
+                className={"opp" + (selectedTarget === opp.id ? " target-selected" : "")}
+                onClick={function() { handleTargetClick(opp.id); }}
+              >
+                <div className="opp-name">{opp.name}</div>
+                <div className="opp-dist">{opp.distance.toLocaleString()}</div>
+                <div className="opp-bar"><div className="opp-bar-fill" style={{width: Math.min(100, opp.distance/WIN_DISTANCE*100) + "%"}} /></div>
+                <div className="opp-hazards">
+                  {opp.hazards.map(function(h, i) { return <span key={"h"+i} className="opp-badge hazard">{cn(CARD_MAP[h] ? CARD_MAP[h].name : h)}</span>; })}
+                  {opp.safeties.map(function(s, i) { return <span key={"s"+i} className="opp-badge immunity">{cn(CARD_MAP[s] ? CARD_MAP[s].name : s)}</span>; })}
+                </div>
+                <div className="opp-hand-ct">{opp.hand.length} {L.cards} {opp.hasVeto ? "🟡" : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Center */}
+        <div className="center-col">
+          <div className="my-zone">
+            <div className="dist-label">{L.networkDistance}</div>
+            <div className="dist-value">{me.distance.toLocaleString()}</div>
+            <div className="dist-bar"><div className="dist-bar-fill" style={{width: Math.min(100, me.distance/WIN_DISTANCE*100) + "%"}} /></div>
+            <div className="my-status">
+              {me.hazards.map(function(h, i) { return <span key={"h"+i} className="opp-badge hazard">{cn(CARD_MAP[h] ? CARD_MAP[h].name : h)}</span>; })}
+              {me.safeties.map(function(s, i) { return <span key={"s"+i} className="opp-badge immunity">{cn(CARD_MAP[s] ? CARD_MAP[s].name : s)}</span>; })}
+              {me.hazards.length === 0 && me.safeties.length === 0 && <span style={{color:"#303050",fontSize:"11px"}}>{L.clear}</span>}
+            </div>
+          </div>
+
+          <div className="log-box" ref={logRef}>
+            {gs.log.map(function(entry, i) {
+              return <div key={i} className={logClass(entry)}>{renderLog(entry)}</div>;
+            })}
+            {gs.log.length === 0 && !inLobby && <div className="log-entry">{L.drawToBegin}</div>}
+            {gs.log.length === 0 && inLobby && <div className="log-entry" style={{color:"#303050"}}>{L.connectingToGrid}</div>}
+          </div>
+
+          {/* Emoji Reaction Bar */}
+          {!showSplash && (
+            <div className="emoji-bar">
+              {EMOJI_OPTIONS.map(function(emoji) {
+                return (
+                  <div key={emoji} className="emoji-btn" onClick={function() { handleEmojiReact(emoji); }}>
+                    {emoji}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Deck + Actions */}
+        <div className="right-col">
+          <div className="deck-zone">
+            <div className="deck-label">{L.drawPile}</div>
+            <div
+              className={"deck-visual" + (isMyTurn && gs.phase === "draw" && !inLobby ? " clickable" : "")}
+              onClick={handleDraw}
+            >
+              {isMyTurn && gs.phase === "draw" && !inLobby ? L.draw : gs.deck.length}
+              {isMyTurn && gs.phase === "draw" && !inLobby && <div style={{fontSize:"10px",color:"#00ff88",marginTop:"4px",opacity:0.7}}>{gs.deck.length + " " + L.remain}</div>}
+            </div>
+          </div>
+
+          <div className="deck-zone">
+            <div className="deck-label">{L.discard}</div>
+            {gs.discard.length > 0 ? (
+              <div className="discard-top" style={{borderColor: gs.discard[gs.discard.length-1].type === "hazard" ? "#ff2080" : gs.discard[gs.discard.length-1].type === "node" ? "#00dcff" : gs.discard[gs.discard.length-1].type === "remedy" ? "#00ff88" : "#ffaa00"}}>
+                <div style={{fontSize:"18px"}}>{ICONS[gs.discard[gs.discard.length-1].name] || "◆"}</div>
+                <div style={{fontSize:"9px",textTransform:"uppercase"}}>{cn(gs.discard[gs.discard.length-1].name)}</div>
+                <div style={{fontSize:"10px",color:"#606080"}}>{gs.discard.length + " " + L.total}</div>
+              </div>
+            ) : (
+              <div className="discard-top" style={{color:"#303050"}}>{L.empty}</div>
+            )}
+          </div>
+
+          <div className="action-buttons">
+            <button className="action-btn discard" onClick={handleDiscard} disabled={selectedCard === null || !isMyTurn || gs.phase !== "play"}>
+              {L.discardBtn}
+            </button>
+            <button className="action-btn new-game" onClick={handleNewGame}>
+              {L.newGame}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Prompt Bar — the confirm beat */}
+      {selectedCardObj && gs.phase === "play" && isMyTurn && (
+        <div className="prompt-bar">
+          {selectedCardObj.type === "hazard" ? (
+            <span style={{color:"#ff2080",fontSize:"14px",fontWeight:"bold"}}>
+              {L.useHazardPrompt(cn(selectedCardObj.name))}
+            </span>
+          ) : (
+            <>
+              <span style={{color: selectedCardObj.type === "node" ? "#00dcff" : selectedCardObj.type === "remedy" ? "#00ff88" : "#ffaa00", fontSize:"14px",fontWeight:"bold"}}>
+                {L.useCard(cn(selectedCardObj.name))}
+              </span>
+              <button className="action-btn play" onClick={handleConfirmPlay} style={{padding:"6px 20px",fontSize:"12px"}}>
+                {L.ok}
+              </button>
+              <button className="action-btn discard" onClick={function(){ setSelectedCard(null); }} style={{padding:"6px 20px",fontSize:"12px"}}>
+                {L.cancel}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Hand */}
+      <div className="hand-container">
+        <div className="hand">
+          {me.hand.map(function(card, idx) {
+            var playable = getCardPlayability(card);
+            return (
+              <div key={card.uid || idx} className="hand-slot">
+                <CardComp
+                  card={card}
+                  lang={L}
+                  selected={selectedCard === idx}
+                  unplayable={gs.phase === "play" && isMyTurn && !playable && card.type !== "hazard"}
+                  onClick={function() { handleCardClick(idx); }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Coup-Fourré Overlay */}
+      {gs.phase === "coupFourre" && gs.coupFourreState && gs.coupFourreState.targetId === me.id && (
+        <div className="coup-overlay">
+          <div className="coup-title">{L.coupFourreTitle}</div>
+          <div className="coup-sub">
+            {L.coupFourreAttack(
+              gs.players.find(function(p){return p.id===gs.coupFourreState.originatorId;}).name,
+              cn(gs.coupFourreState.hazardCard.name)
+             )}
+          </div>
+          <CardComp card={gs.coupFourreState.safetyCard} lang={L} />
+          <div className="coup-sub">{L.coupFourreCounter(cn(gs.coupFourreState.safetyCard.name))}</div>
+          <div className="coup-actions">
+            <button className="action-btn witness" onClick={function(){ handleCoupFourre(true); }} style={{fontSize:"14px",padding:"12px 28px"}}>
+              {L.counter}
+            </button>
+            <button className="action-btn veto" onClick={function(){ handleCoupFourre(false); }} style={{fontSize:"14px",padding:"12px 28px"}}>
+              {L.decline}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Splash Screen */}
+      {showSplash && (
+        <div className="splash-overlay">
+          <div className="splash-title">{L.gameTitle}</div>
+          {/* Language picker on splash too */}
+          <div style={{display:"flex",gap:"16px",marginBottom:"-10px",flexWrap:"wrap",justifyContent:"center"}}>
+            <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+              <span style={{fontSize:"10px",color:"#505060",letterSpacing:"1px",textTransform:"uppercase"}}>lang</span>
+              <button className={"lang-btn" + (langCode === "en" ? " active" : "")} onClick={function(){ switchLang("en"); }} style={{fontSize:"12px",padding:"4px 12px"}}>EN</button>
+              <button className={"lang-btn" + (langCode === "th" ? " active" : "")} onClick={function(){ switchLang("th"); }} style={{fontSize:"12px",padding:"4px 12px"}}>ไทย</button>
+            </div>
+            <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+              <span style={{fontSize:"10px",color:"#505060",letterSpacing:"1px",textTransform:"uppercase"}}>vibe</span>
+              <button className={"lang-btn" + (vibe === "genz" ? " active" : "")} onClick={function(){ switchVibe("genz"); }} style={{fontSize:"12px",padding:"4px 12px"}} title="Gen Z chat">Z</button>
+              <button className={"lang-btn" + (vibe === "classic" ? " active" : "")} onClick={function(){ switchVibe("classic"); }} style={{fontSize:"12px",padding:"4px 12px"}} title="80s/90s classic">80s</button>
+            </div>
+          </div>
+          <div className="splash-narrative">
+            {L.splashLine1}<br/><br/>
+            {L.splashLine2}<br/><br/>
+            {L.splashLine3} <em>{L.splashLine3b}</em> {L.splashLine3c}
+          </div>
+          <div style={{display:"flex",gap:"24px",marginTop:"8px",flexWrap:"wrap",justifyContent:"center"}}>
+            <div style={{textAlign:"center",maxWidth:"140px"}}>
+              <div style={{color:"#ff2080",fontSize:"13px",fontWeight:"bold",letterSpacing:"1px"}}>Rage</div>
+              <div style={{color:"#505060",fontSize:"10px",lineHeight:"1.5",marginTop:"4px"}}>{L.bioRage}</div>
+            </div>
+            <div style={{textAlign:"center",maxWidth:"140px"}}>
+              <div style={{color:"#00ff88",fontSize:"13px",fontWeight:"bold",letterSpacing:"1px"}}>Love</div>
+              <div style={{color:"#505060",fontSize:"10px",lineHeight:"1.5",marginTop:"4px"}}>{L.bioLove}</div>
+            </div>
+            <div style={{textAlign:"center",maxWidth:"140px"}}>
+              <div style={{color:"#b44dff",fontSize:"13px",fontWeight:"bold",letterSpacing:"1px"}}>Envy</div>
+              <div style={{color:"#505060",fontSize:"10px",lineHeight:"1.5",marginTop:"4px"}}>{L.bioEnvy}</div>
+            </div>
+          </div>
+          <button className="splash-start" onClick={handleSplashEnter}>
+            {L.splashEnter}
+          </button>
+        </div>
+      )}
+
+      {/* Win Overlay */}
+      {gs.phase === "gameOver" && (
+        <div className="win-overlay">
+          <div className="win-title">
+            {gs.winner === me.id ? L.youEscaped : L.theyEscaped(gs.players.find(function(p){return p.id===gs.winner;}).name)}
+          </div>
+          <div className="win-sub">
+            {gs.winner === me.id
+              ? L.youEscapedSub(me.distance)
+              : L.theyEscapedSub(gs.players.find(function(p){return p.id===gs.winner;}).distance)
+            }
+          </div>
+          <button className="action-btn new-game" onClick={handleNewGame} style={{fontSize:"16px",padding:"14px 32px",marginTop:"10px"}}>
+            {L.newRun}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<MilliNodesGame />, document.getElementById("root"));
+</script>
+</body>
+</html>
